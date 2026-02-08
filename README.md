@@ -1,51 +1,80 @@
-# Partitioned macOS to run Windows 10
+# Network Traffic Analysis & Endpoint Provisioning Lab
 
-![macOS](https://img.shields.io/badge/macOS-Apple-grey) ![Windows 10](https://img.shields.io/badge/Windows-10-blue)
+## Project Overview
+This project simulates a network traffic analysis scenario to demonstrate the security risks of unencrypted network protocols (HTTP). The objective was to provision a corporate-grade Windows 10 Enterprise endpoint from scratch, integrate it into a live network environment using bridged networking, and intercept cleartext authentication credentials using packet analysis tools.
 
-## Table of Contents
-- [Project Summary](#project-summary)
-- [Motivation](#motivation)
-- [Environment](#environment)
-- [What I actually did](#what-i-actually-did)
-- [Problems encountered and fixes](#problems-encountered-and-fixes)
-- [Outcomes and lessons learned](#outcomes-and-lessons-learned)
-- [Next steps](#next-steps)
+This lab emphasizes **virtualization infrastructure**, **network engineering**, and **packet-level forensics**.
 
+## Tools & Technologies
+* **Hypervisor:** Oracle VirtualBox (Version 7.x)
+* **Operating System:** Windows 10 Enterprise (Evaluation ISO)
+* **Network Analysis:** Wireshark
+* **Protocols:** HTTP, TCP, IPv4, DHCP
+* **Target Application:** `testphp.vulnweb.com` (Intentional vulnerable web application)
 
-**Project Summary:** Dual‑boot and VM lab documenting how I partitioned a 2019 MacBook Pro to run Windows 10, what went wrong, and what I learned.
-
-### Motivation
-I wanted hands‑on Windows admin experience while keeping my macOS workstation intact. My goals were to compare VM versus native performance, practice safe partitioning, and produce a client that could later join an AD domain.
-
-### Environment
-- - **Host:** MacBook Pro 2019 i7 — macOS: **TBD**
-- **Target:** Windows 10 ISO
-- **VM:** VirtualBox for initial testing  
-- **Tools I used:** Disk Utility; Boot Camp Assistant (native installer present on this model); VirtualBox; Time Machine; Homebrew (installed but later not required for the native path); PowerShell for Windows checks
-
-### What I actually did
-1. **Backed up first.** I created a Time Machine backup to an external drive and verified a few files to ensure the backup was usable.  
-2. **Tested in a VM.** I installed Windows 10 in VirtualBox using the ISO to confirm the installer and drivers worked. I installed Guest Additions and took a snapshot named `baseline`. This gave me a safe rollback point.  
-3. **Realized no USB was needed.** Because my MacBook Pro 2019 i7 already had the necessary native installer support, I did not need to create an external USB installer or rely on Homebrew for the install path. I had installed Homebrew earlier but it turned out unnecessary for the native Boot Camp workflow.  
-4. **Partitioned the disk.** I used Disk Utility to resize my macOS volume and create a Windows partition. I allocated around 120 GB for Windows and left the partition for the Windows installer to format. During this step I hit a limitation: the partition slider in Disk Utility would only move a small amount and would not resize to the full space I expected. I retried, freed additional space, and proceeded after confirming backups.  
-5. **Installed Windows natively.** I used Boot Camp Assistant to proceed with the native install and selected the partition during Windows setup, formatting it as NTFS when prompted. After the first boot into Windows I installed Boot Camp drivers and Windows updates.  
-6. **Prepared for AD testing.** I installed RSAT and a few admin tools on the Windows client so it would be ready to join a domain in a later phase.
-
-### Problems encountered and fixes
-- **Partition slider limited movement.** Disk Utility initially would not resize the macOS volume as far as I wanted. I freed additional disk space, closed background apps, and retried. When Disk Utility still behaved inconsistently I restored from the Time Machine image to confirm backups were valid, then retried the resize.  
-- **Driver gaps after install.** A few devices lacked drivers after the first Windows boot. Reinstalling the Boot Camp driver package and running Windows Update resolved most missing drivers.  
-- **Network DHCP issue in bridged mode.** My first bridged configuration did not receive an IP from the router; switching to a different physical NIC and re‑enabling DHCP fixed the issue.
-
-
-### Outcomes and lessons learned
-- Testing in a VM first saved time and prevented a bad native install.  
-- Always verify backups before repartitioning; I restored once from the image when Disk Utility behaved unexpectedly.  
-- Boot Camp drivers are essential for native installs; keep a copy on USB.  
-- Homebrew was useful for other tasks but not required for the native Boot Camp workflow on my 2019 MacBook Pro.
-
-
-### Next steps
-- Build a Windows Server VM for Active Directory and join this client to the domain.  
-- Expand this repo with a sanitized step‑by‑step appendix that reproduces the exact commands and screenshots once I recover them from logs or snapshots.
+## Architecture
+* **Host Machine:** Workstation (The "Analyst")
+* **Guest Machine:** Windows 10 Enterprise VM (The "Victim")
+* **Network Config:** Bridged Adapter with Promiscuous Mode enabled (Allow All)
 
 ---
+
+## Challenges & Troubleshooting (The "Real World" Experience)
+This project required significant troubleshooting to overcome infrastructure and configuration hurdles. Below are the specific challenges faced and how they were resolved:
+
+### 1. Provisioning Failure & ISO Manual Build
+* **The Issue:** The initial plan to import a pre-packaged VM failed due to broken vendor links and version incompatibilities.
+* **The Solution:** Pivoted strategy to **manual provisioning**. I located the official Windows 10 Enterprise ISO from the Microsoft Evaluation Center and built the VM from the ground up, manually configuring the virtual CPU/RAM and attaching the ISO to the virtual optical drive.
+
+### 2. Network Driver Incompatibility
+* **The Issue:** The VM initially failed to bridge to the Wi-Fi adapter, preventing the host from capturing traffic.
+* **The Solution:** I manually installed the **VirtualBox NDIS6 Bridged Networking Driver** within the host's network adapter properties, forcing the physical card to support the virtual bridge.
+
+### 3. Signal-to-Noise Ratio in Packet Capture
+* **The Issue:** Early Wireshark captures were flooded with SSDP and UPnP "noise" from the home router (Destination `10.0.0.1`), making it impossible to find the target traffic.
+* **The Solution:** I implemented precise display filters to isolate the relevant data.
+    * *Attempt 1:* Filtered by IP (`ip.addr == 10.0.0.2`), but this still included background OS chatter.
+    * *Attempt 2:* Filtered by payload content (`frame contains "uname"`), but this captured encrypted HTTPS retransmissions.
+    * *Final Success:* Applied the application-layer filter `http.request.method == POST`. This instantly isolated the specific HTTP packet containing the login form submission.
+
+---
+
+## Evidence & Analysis
+
+### 1. Infrastructure Provisioning
+**Status:** *Success*
+The following screenshots demonstrate the successful manual installation of the Windows 10 Enterprise environment.
+* **Boot Process:** The VM successfully booting from the manually attached ISO file.
+* **OS Installation:** The "Installing Windows" status screen confirming the custom partition setup was accepted.
+
+<img width="1052" height="924" alt="screenshot 7" src="https://github.com/user-attachments/assets/5a84ec6c-4e1f-4438-ab90-1318a5b7095a" />
+
+### 2. Network Engineering & Troubleshooting
+**Status:** *Resolved*
+Getting the VM to communicate on the physical network required manual driver configuration.
+* **Driver Install:** Manually adding the "VirtualBox NDIS6 Bridged Networking Driver" to the host Wi-Fi properties to enable traffic bridging.
+* **Adapter Config:** Configuring the VirtualBox network settings to "Bridged Adapter" and—crucially—setting Promiscuous Mode to "Allow All" so the host could sniff the guest's packets.
+* **Verification:** The `ipconfig` command inside the VM confirms it pulled a real LAN IP (`10.0.0.2`) from the physical router, bypassing the default NAT isolation.
+
+
+<img width="778" height="976" alt="screenshot 5" src="https://github.com/user-attachments/assets/ec61bc4f-a87c-4e95-a522-a85cb0b2048f" />
+
+<img width="1158" height="906" alt="Screenshot 9" src="https://github.com/user-attachments/assets/cb84fc48-0c51-4b4c-b2ae-90931e448083" />
+
+### 3. The Interception (Packet Analysis)
+**Status:** *Compromised*
+The final phase involved capturing the authentication traffic.
+* **The Target:** The vulnerable web application `testphp.vulnweb.com` accessed via HTTP.
+* **The Capture:** Using Wireshark with the filter `http.request.method == POST` to ignore background router noise and isolate the login request.
+* **The Payload:** The "Follow TCP Stream" window reveals the reconstructed data stream. The username (`admin`) and password (`MySecret123`) are clearly visible in the body of the POST request, proving the vulnerability of unencrypted authentication.
+
+<img width="2266" height="1584" alt="screenshot 13" src="https://github.com/user-attachments/assets/ee30fe51-69a1-4377-b151-bc1a25145530" />
+
+---
+
+## Key Skills Learned
+* **Endpoint Provisioning:** Configuring virtual hardware and installing enterprise operating systems from raw media (ISO).
+* **Network Troubleshooting:** Diagnosing IP addressing issues, installing NDIS drivers, and understanding the difference between NAT and Bridged networking.
+* **Packet Analysis:** Reading TCP/IP headers and payloads to reconstruct user sessions.
+* **Protocol Knowledge:** Practical demonstration of why HTTP (Port 80) is insecure compared to HTTPS (Port 443).
+* **Persistence:** Successfully navigating vendor errors and configuration failures to achieve the lab objective.
