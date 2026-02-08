@@ -1,4 +1,3 @@
-# Network Traffic Analysis & Endpoint Provisioning Lab
 
 ## Project Overview
 This project simulates a network traffic analysis scenario to demonstrate the security risks of unencrypted network protocols (HTTP). The objective was to provision a corporate-grade Windows 10 Enterprise endpoint from scratch, integrate it into a live network environment using bridged networking, and intercept cleartext authentication credentials using packet analysis tools.
